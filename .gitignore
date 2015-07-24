@@ -1,2 +1,9 @@
 *.jpg
 thumbs.db
+*.html
+
+*.csv
+
+*.png
+
+*.exe
