@@ -21,7 +21,7 @@ Gui, Add, GroupBox, x14 y35 w612 h130 vBoxIn, 输入
 Gui, Add, GroupBox, x14 y170 w612 h295 vBoxOut, 输出
 Gui, Add, Edit, vKeyWords x28 y55 w350 h100, 请输入需要查询的APPID或应用名，如：333206289
 Gui, Add, Button, x400 y55 w90 h30 gQuery Default, 查ID
-Gui, Add, Button, x510 y55 w90 h30 gTransfer, 转换
+Gui, Add, Button, x510 y55 w90 h30 gSave, 保存
 ;Gui, Add, Button, x550 y55 w60 h30 gSubMode, 点评
 Gui, Add, Button, x400 y95 w90 h30 gSearch, 搜索
 Gui, Add, Button, x510 y95 w90 h30 gCopy,  复制
@@ -32,6 +32,7 @@ Gui, Add, ListView, x28 y190 w582 h265 -Readonly r6 vAppGrid gAppGrid hwndHLV1, 
 Menu, MyContextMenu, Add, 查看简介, ContextCheckCon
 Menu, MyContextMenu, Add, 复制内容, ContextCopyRows
 Menu, MyContextMenu, Add, 清空表单, ContextClearRows
+Menu, MyContextMenu, Add, 测试功能, ContextTest
 if !(LVEDIT_INIT(HLV1))
 	MsgBox, %ErrorLevel%
 Gui, Tab, 2
@@ -49,11 +50,12 @@ OnMessage(WM_KEYDOWN:=0x0100, "WM_KEYDOWN")
 OnMessage(WM_KEYUP:=0x0101, "WM_KEYDOWN")
 OnMessage(11, "DisableSetRedraw")
 Gui, Tab, 3
-Gui, Show, w640 h480 Center, PP助手应用信息查询工具V1.5 20150727
+Gui, Show, w640 h480 Center, PP助手应用信息查询工具V1.5 20150728
 GuiWinHWND:=WinExist()
 wb.Navigate("about:blank")
 wb.Visible := true
 wb.silent := true
+;GuiControl, Disable, 转换
 
 csvfile := A_ScriptDir . "`\LVContent.csv"
 IfExist, %csvfile%
@@ -117,14 +119,18 @@ else
 	LV_ModifyCol(12,0)
 	LV_ModifyCol(13,0)
 }
-;GuiControl, Disable, 专题
 return
 
 Login:
 	NowURL := wb.LocationUrl
 	StringGetPos, Pos1, NowURL, =, R
-	Pos2 := Pos1 + 2
-	Hash := SubStr(NowURL, Pos2)
+	if  ErrorLevel
+		Hash := ""
+	else
+	{
+		Pos2 := Pos1 + 2
+		Hash := SubStr(NowURL, Pos2)
+	}
 	if Hash=
 	{
 		url:="http://192.168.102.102:8586/index.php?m=admin&c=index&a=login&pc_hash="
@@ -138,7 +144,7 @@ Login:
 return
 
 Collection:
-	gosub, GetDetail
+	;gosub, GetDetail
 	Gui, Submit, NoHide
 	;MsgBox % PPTopicID "`n" JBTopicID
 	if PPTopicID=
@@ -327,7 +333,7 @@ Query:
 	Loop, Parse, KeyWords, `,`n, `r%A_Space%
 	{
 		if A_LoopField =
-			break
+			continue
 		RowNumber := A_Index
 		AppListID := A_LoopField
 		SearchTime := 0
@@ -338,106 +344,14 @@ Query:
 			if JBType = 2
 				data := "site=1&id=" . AppListID
 			PPJson := UrlPost(URL,data)
-			ppName := json(PPJson,"name")
-			AppName := JavaEscapedToUnicode(ppName)
+			PP := parseJson(PPJson)
+			AppName := PP.name
 			if AppName<>
 			{
-				LVWrite(RowNumber,AppListID,JBType,himl,PPJson)
-				if JBType = 1
-					LV_GetText(AppListName, RowNumber,4)
-				if JBType = 2
-					LV_GetText(AppListName, RowNumber,5)
-				LV_GetText(AppListBundle, RowNumber,8)
-				PosN := RegExMatch(AppListName, ".?[\s|-|\(|（|－]")
-				StringLeft, PPSearchWord, AppListName, PosN
-				if PosN = 0
-					PPSearchWord := AppListName
-				;MsgBox % AppListName "`n" PosN "`n" SearchWord
-				if JBType = 1
-					SearchWord := PPSearchWord
-				if JBType = 2
-					SearchWord := AppListName
-				searchjson := PPSearch(SearchWord,2)
-				;MsgBox % KeyWord "`n" JBType "`n" searchjson
-				Loop, 10
-				{
-					LoopTime := A_Index - 1
-					searchname := "content[" . LoopTime . "].title"
-					AppName := json(searchjson,searchname)
-					if AppName =
-						break
-					searchappid := "content[" . LoopTime . "].id"
-					AppID := json(searchjson,searchappid)
-					searchappitid := "content[" . LoopTime . "].itemId"
-					AppITID := json(searchjson,searchappitid)
-					if JBType = 1
-						AppSID := AppITID
-					if JBType = 2
-						AppSID := AppID
-					;MsgBox % "原始ID：" AppListID "`n匹配ID：" AppSID
-					if AppListID = %AppSID%
-					{
-						URL := "http://pppc2.25pp.com/pp_api/ios.php"
-						if JBType = 1
-							data := "site=1&id=" . AppID
-						if JBType = 2
-							data := "site=3&id=" . AppITID
-						PPJson := UrlPost(URL,data)
-						;MsgBox % PPJson
-						ppName := json(PPJson,"name")
-						AppName := JavaEscapedToUnicode(ppName)
-						;MsgBox % AppName
-						if AppName =
-							break
-						if JBType = 1
-							LVWrite(RowNumber,AppID,JBType,himl,PPJson,1)
-						if JBType = 2
-							LVWrite(RowNumber,AppITID,JBType,himl,PPJson,1)
-						SearchTime := 1
-						break
-					}
-				}
-				if SearchTime <> 1
-				{
-					if JBType = 1
-						SType := 2
-					if JBType = 2
-						SType := 1
-					searchjson := PPSearch(SearchWord,SType,20)
-					;MsgBox % searchjson
-					Loop, 20
-					{
-						LoopTime := A_Index - 1
-						searchname := "content[" . LoopTime . "].title"
-						AppName := json(searchjson,searchname)
-						if AppName =
-							break
-						searchbundel := "content[" . LoopTime . "].buid"
-						AppBundle := json(searchjson,searchbundel)
-						;MsgBox % "原：" AppListBundle "`n新：" AppBundle
-						if AppListBundle = %AppBundle%
-						{
-							searchappid := "content[" . LoopTime . "].id"
-							AppID := json(searchjson,searchappid)
-							searchappitid := "content[" . LoopTime . "].itemId"
-							AppITID := json(searchjson,searchappitid)
-							URL := "http://pppc2.25pp.com/pp_api/ios.php"
-							if JBType = 1
-								data := "site=1&id=" . AppID
-							if JBType = 2
-								data := "site=3&id=" . AppITID
-							PPJson := UrlPost(URL,data)
-							if JBType = 1
-								LVWrite(RowNumber,AppID,JBType,himl,PPJson,1)
-							if JBType = 2
-								LVWrite(RowNumber,AppITID,JBType,himl,PPJson,1)
-							SearchTime := 2
-							break
-						}
-					}
-				}
-				if SearchTime <> 0 
-					break
+				LVWrite(RowNumber,AppListID,JBType,himl,PP)
+				SearchTime := Transfer(RowNumber, AppListID, JBType, SearchTime)
+				;MsgBox % RowNumber "`n" AppListID "`n" JBType "`n" SearchTime
+				break
 			}
 			else
 			{
@@ -451,135 +365,12 @@ Query:
 				}
 				if A_Index = 2
 					if SearchTime = 0
-						FalseList .= A_LoopField "`n"
-				;~ if JBType = 1
-					;~ data := "site=3&id=" . A_LoopField
-				;~ if JBType = 2
-					;~ data := "site=1&id=" . A_LoopField
-				;~ PPJson := UrlPost(URL,data)
-				;~ ppName := json(PPJson,"name")
-				;~ AppName := JavaEscapedToUnicode(ppName)
-				;~ if AppName<>
-					;~ LVWrite(A_index,A_LoopField,JBType,himl,PPJson)
+						FailList .= A_LoopField "`n"
 			}
 		}
 	}
-	if FalseList <>
-		MsgBox,0x2000,警告,以下AppID:`n%FalseList% 不能查询到任何匹配应用
-	;~ Loop % LV_GetCount()
-	;~ {
-		;~ RowNumber := A_Index
-		;~ SearchJB := 0
-		;~ LV_GetText(AppID, RowNumber,3)
-		;~ if AppID <>
-		;~ {
-			;~ GuiControl, , 查询越狱, 1
-			;~ Gui, Submit, NoHide
-		;~ }
-		;~ if JBType = 1
-		;~ {
-			;~ LV_GetText(AppListName, RowNumber,4)
-			;~ LV_GetText(AppListID, RowNumber,2)
-		;~ }
-		;~ if JBType = 2
-		;~ {
-			;~ LV_GetText(AppListName, RowNumber,5)
-			;~ LV_GetText(AppListID, RowNumber,3)
-		;~ }
-		;~ LV_GetText(AppListBundle, RowNumber,8)
-		;~ PosN := RegExMatch(AppListName, ".?[\s|-|\(|（|－]")
-		;~ StringLeft, PPSearchWord, AppListName, PosN
-		;~ if PosN = 0
-			;~ PPSearchWord := AppListName
-		;~ ;MsgBox % AppListName "`n" PosN "`n" SearchWord
-		;~ if JBType = 1
-			;~ SearchWord := PPSearchWord
-		;~ if JBType = 2
-			;~ SearchWord := AppListName
-		;~ searchjson := PPSearch(SearchWord,2)
-		;~ ;MsgBox % KeyWord "`n" JBType "`n" searchjson
-		;~ Loop, 10
-		;~ {
-			;~ ;break
-			;~ LoopTime := A_Index - 1
-			;~ searchname := "content[" . LoopTime . "].title"
-			;~ AppName := json(searchjson,searchname)
-			;~ if AppName =
-				;~ break
-			;~ searchappid := "content[" . LoopTime . "].id"
-			;~ AppID := json(searchjson,searchappid)
-			;~ searchappitid := "content[" . LoopTime . "].itemId"
-			;~ AppITID := json(searchjson,searchappitid)
-			;~ if JBType = 1
-				;~ AppSID := AppITID
-			;~ if JBType = 2
-				;~ AppSID := AppID
-			;~ ;MsgBox % "原始ID：" AppListID "`n匹配ID：" AppSID
-			;~ if AppListID = %AppSID%
-			;~ {
-				;~ URL := "http://pppc2.25pp.com/pp_api/ios.php"
-				;~ if JBType = 1
-					;~ data := "site=1&id=" . AppID
-				;~ if JBType = 2
-					;~ data := "site=3&id=" . AppITID
-				;~ PPJson := UrlPost(URL,data)
-				;~ ;MsgBox % PPJson
-				;~ ppName := json(PPJson,"name")
-				;~ AppName := JavaEscapedToUnicode(ppName)
-				;~ ;MsgBox % AppName
-				;~ if AppName =
-					;~ break
-				;~ if JBType = 1
-					;~ LVWrite(RowNumber,AppID,JBType,himl,PPJson,1)
-				;~ if JBType = 2
-					;~ LVWrite(RowNumber,AppITID,JBType,himl,PPJson,1)
-				;~ SearchJB := 1
-				;~ break
-			;~ }
-		;~ }
-		;~ if SearchJB <> 1
-		;~ {
-			;~ if JBType = 1
-				;~ SType := 2
-			;~ if JBType = 2
-				;~ SType := 1
-			;~ searchjson := PPSearch(SearchWord,SType,20)
-			;~ ;MsgBox % searchjson
-			;~ Loop, 20
-			;~ {
-				;~ LoopTime := A_Index - 1
-				;~ searchname := "content[" . LoopTime . "].title"
-				;~ AppName := json(searchjson,searchname)
-				;~ if AppName =
-					;~ break
-				;~ searchbundel := "content[" . LoopTime . "].buid"
-				;~ AppBundle := json(searchjson,searchbundel)
-				;~ ;MsgBox % "原：" AppListBundle "`n新：" AppBundle
-				;~ if AppListBundle = %AppBundle%
-				;~ {
-					;~ searchappid := "content[" . LoopTime . "].id"
-					;~ AppID := json(searchjson,searchappid)
-					;~ searchappitid := "content[" . LoopTime . "].itemId"
-					;~ AppITID := json(searchjson,searchappitid)
-					;~ URL := "http://pppc2.25pp.com/pp_api/ios.php"
-					;~ if JBType = 1
-						;~ data := "site=1&id=" . AppID
-					;~ if JBType = 2
-						;~ data := "site=3&id=" . AppITID
-					;~ PPJson := UrlPost(URL,data)
-					;~ if JBType = 1
-						;~ LVWrite(RowNumber,AppID,JBType,himl,PPJson,1)
-					;~ if JBType = 2
-						;~ LVWrite(RowNumber,AppITID,JBType,himl,PPJson,1)
-					;~ break
-				;~ }
-			;~ }
-		;~ }
-	;~ }
-	if JBType = 1
-		GuiControl, , 查询越狱, 1
-	if JBType = 2
-		GuiControl, , 查询正版, 1
+	if FailList <>
+		MsgBox,0x2000,警告,以下AppID:`n%FailList% 不能查询到任何匹配应用
 	LV_ModifyCol()
 	LV_ModifyCol(4,80)
 	LV_ModifyCol(5,80)
@@ -608,18 +399,6 @@ ContextCheckCon:
 		LV_GetText(RetrievedID, RowNumber, 2)
 	if JBType = 2
 		LV_GetText(RetrievedID, RowNumber, 3)
-	;MsgBox % RetrievedID
-	;~ WinGetPos, x, y, w, , ahk_id %GuiWinHWND%
-	;~ if x+w+2GuiW > A_ScreenWidth
-		;~ if x-2GuiW-5 > 0
-			;~ 2GuiX := x-2GuiW-5
-		;~ else
-			;~ 2GuiX := 10
-	;~ else
-		;~ 2GuiX := x+w+5
-	;WinMove, % "ahk_id" 2GUIhwnd,, %2GuiX%, %y%, %2GuiW%, %2GuiH%
-	;WinMove, % "ahk_id" 2GUIhwnd,, (x+w+2GuiW > A_ScreenWidth? x-2GuiW-5:x+w+5), %y%, %2GuiW%, %2GuiH%
-	;WinShow, % "ahk_id" 2GUIhwnd
 	wb.Visible := true
 	url := A_ScriptDir . "`\Temp`\" . RetrievedID . ".html"
 	wb.Navigate(url)
@@ -659,20 +438,6 @@ AppGrid:
 		;if A_EventInfo = 32
 		MsgBox % "检测到" Chr(A_EventInfo)
 			;gosub, ContextCheckCon
-;{
-;    LV_GetText(itemid, A_EventInfo, 2) ; 从首个字段中获取文本.
-;    LV_GetText(id, A_EventInfo, 3)  ; 从第二个字段中获取文本.
-;	MsgBox % itemid "`n" id
-;	URL := "http://pppc2.25pp.com/pp_api/ios.php"
-;	if JBType = 1
-;		data := "site=3&id=" . itemid
-;	if JBType = 2
-;		data := "site=1&id=" . id
-;	ppjson := UrlPost(URL,data)
-;	ppcontent := json(ppjson,"content")
-;	content := JavaEscapedToUnicode(ppcontent)
-;	ToolTip, content
-;}
 return
 
 Search:
@@ -686,221 +451,47 @@ Search:
 	GuiControl, Disable, 搜索
 	LV_Delete()
 	IL_Destroy(himl)
-	himl:=DllCall("ImageList_Create",Int,45,Int,45,UInt,0x21,Int,w,Int,w,UInt)
+	himl:=DllCall("ImageList_Create",Int,45,Int,45,UInt,0x21,Int,10,Int,1)
 	LV_SetImageList(himl,1)
 	searchjson := PPSearch(KeyWords,JBType,15)
+	Search := parseJson(searchjson)
 	;MsgBox % searchjson
 	Loop, 15
 	{
 		RowNumber := A_Index
-		LoopTime := A_Index - 1
-		searchappid := "content[" . LoopTime . "].id"
-		AppID := json(searchjson,searchappid)
-		searchappitid := "content[" . LoopTime . "].itemId"
-		AppITID := json(searchjson,searchappitid)
+		AppID := Search.content[A_Index].id
+		AppITID := Search.content[A_Index].itemId
+		if JBType = 1
+			SearchAppID := AppITID
+		if JBType = 2
+			SearchAppID := AppID
 		URL := "http://pppc2.25pp.com/pp_api/ios.php"
 		if JBType = 1
-			data := "site=3&id=" . AppITID
+			data := "site=3&id=" . SearchAppID
 		if JBType = 2
-			data := "site=1&id=" . AppID
+			data := "site=1&id=" . SearchAppID
 		PPJson := UrlPost(URL,data)
-		;MsgBox % PPJson
-		ppName := json(PPJson,"name")
-		AppName := JavaEscapedToUnicode(ppName)
+		PP := parseJson(PPJson)
+		;MsgBox % data "`n" PPJson
+		AppName := PP.name
 		;MsgBox % AppName
 		if AppName<>
 		{
-			if JBType = 1
-				LVWrite(A_Index,AppITID,JBType,himl,PPJson)
-			if JBType = 2
-				LVWrite(A_Index,AppID,JBType,himl,PPJson)
-		}
-		else
-			break
-	}
-	LV_ModifyCol()
-	if JBType = 1
-	{
-		LV_ModifyCol(3,0)
-		LV_ModifyCol(4,80)
-		LV_ModifyCol(5,0)
-		LV_ModifyCol(7,0)
-		LV_ModifyCol(8,70)
-		LV_ModifyCol(10,0)
-		LV_ModifyCol(12,0)
-		LV_ModifyCol(13,0)
-	}
-	if JBType = 2
-	{
-		LV_ModifyCol(2,0)
-		LV_ModifyCol(4,0)
-		LV_ModifyCol(5,80)
-		LV_ModifyCol(6,0)
-		LV_ModifyCol(8,70)
-		LV_ModifyCol(9,0)
-		LV_ModifyCol(11,0)
-		LV_ModifyCol(13,0)
-	}
-	StayRun := 0
-	GuiControl, Enable, 搜索
-return
-
-Transfer:
-	Gui, Submit, NoHide
-	if StayRun = 1
-	{
-		MsgBox,0x2000,警告,程序忙，请耐心等待前一个任务完成
-		return
-	}
-	StayRun := 1
-	GuiControl, Disable, 转换
-	Loop % LV_GetCount()
-	{
-		RowNumber := A_Index
-		SearchJB := 0
-		LV_GetText(AppID, RowNumber,3)
-		if AppID <>
-		{
-			GuiControl, , 查询越狱, 1
-			Gui, Submit, NoHide
-		}
-		if JBType = 1
-		{
-			LV_GetText(AppListName, RowNumber,4)
-			LV_GetText(AppListID, RowNumber,2)
-		}
-		if JBType = 2
-		{
-			LV_GetText(AppListName, RowNumber,5)
-			LV_GetText(AppListID, RowNumber,3)
-		}
-		LV_GetText(AppListBundle, RowNumber,8)
-		PosN := RegExMatch(AppListName, ".?[\s|-|\(|（|－]")
-		StringLeft, SearchName, AppListName, PosN
-		if PosN = 0
-			SearchName := AppListName
-		;MsgBox % AppListName "`n" PosN "`n" SearchName
-		URL := "http://jsondata.25pp.com/index.html"
-		if JBType = 1
-			data = {"dcType": 0,"keyword": "%SearchName%","clFlag": 1,"perCount": 10,"page": 0}
-		if JBType = 2
-			data = {"dcType": 0,"keyword": "%AppListName%","clFlag": 1,"perCount": 10,"page": 0}
-		;MsgBox % URl "`n" data
-		WebRequest := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-		WebRequest.Open("Post", URL, true)
-		WebRequest.SetRequestHeader("Referer", "http://jsondata.25pp.com/index.html?tunnel-command=4261421120")
-		WebRequest.SetRequestHeader("Origin", "http://jsondata.25pp.com")
-		WebRequest.SetRequestHeader("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_3) AppleWebKit/600.6.3 (KHTML, like Gecko) Version/8.0.6 Safari/600.6.3")
-		WebRequest.SetRequestHeader("Tunnel-Command", "4262469664")
-		WebRequest.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded")
-		WebRequest.Send(data)
-		WebRequest.WaitForResponse(-1)
-		searchjson := WebRequest.ResponseText
-		;MsgBox % searchjson
-		Loop, 10
-		{
-			;break
-			LoopTime := A_Index - 1
-			searchname := "content[" . LoopTime . "].title"
-			AppName := json(searchjson,searchname)
-			if AppName =
-				break
-			searchappid := "content[" . LoopTime . "].id"
-			AppID := json(searchjson,searchappid)
-			searchappitid := "content[" . LoopTime . "].itemId"
-			AppITID := json(searchjson,searchappitid)
-			if JBType = 1
-				AppSID := AppITID
-			if JBType = 2
-				AppSID := AppID
-			;MsgBox % "原始ID：" AppListID "`n匹配ID：" AppSID
-			if AppListID = %AppSID%
-			{
-				URL := "http://pppc2.25pp.com/pp_api/ios.php"
-				if JBType = 1
-					data := "site=1&id=" . AppID
-				if JBType = 2
-					data := "site=3&id=" . AppITID
-				PPJson := UrlPost(URL,data)
-				ppName := json(PPJson,"name")
-				AppName := JavaEscapedToUnicode(ppName)
-				if AppName =
-				{
-					SearchJB := 1
-					break
-				}
-				if JBType = 1
-					LVWrite(RowNumber,AppID,JBType,himl,PPJson,1)
-				if JBType = 2
-					LVWrite(RowNumber,AppITID,JBType,himl,PPJson,1)
-				SearchJB := 1
-				break
-			}
-		}
-		if SearchJB <> 1
-		{
-			URL := "http://jsondata.25pp.com/index.html"
-			if JBType = 1
-				data = {"dcType": 0,"keyword": "%SearchName%","clFlag": 1,"perCount": 20,"page": 0}
-			if JBType = 2
-				data = {"dcType": 0,"keyword": "%SearchName%","clFlag": 3,"perCount": 20,"page": 0}
-			;MsgBox % URl "`n" data
-			WebRequest := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-			WebRequest.Open("Post", URL, true)
-			WebRequest.SetRequestHeader("Referer", "http://jsondata.25pp.com/index.html?tunnel-command=4261421120")
-			WebRequest.SetRequestHeader("Origin", "http://jsondata.25pp.com")
-			WebRequest.SetRequestHeader("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_3) AppleWebKit/600.6.3 (KHTML, like Gecko) Version/8.0.6 Safari/600.6.3")
-			if JBType = 1
-				WebRequest.SetRequestHeader("Tunnel-Command", "4262469664")
-			if JBType = 2
-				WebRequest.SetRequestHeader("Tunnel-Command", "4262469686")
-			WebRequest.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded")
-			WebRequest.Send(data)
-			WebRequest.WaitForResponse(-1)
-			searchjson := WebRequest.ResponseText
-			;MsgBox % searchjson
-			Loop, 20
-			{
-				LoopTime := A_Index - 1
-				searchname := "content[" . LoopTime . "].title"
-				AppName := json(searchjson,searchname)
-				if AppName =
-					break
-				searchbundel := "content[" . LoopTime . "].buid"
-				AppBundle := json(searchjson,searchbundel)
-				;MsgBox % "原：" AppListBundle "`n新：" AppBundle
-				if AppListBundle = %AppBundle%
-				{
-					searchappid := "content[" . LoopTime . "].id"
-					AppID := json(searchjson,searchappid)
-					searchappitid := "content[" . LoopTime . "].itemId"
-					AppITID := json(searchjson,searchappitid)
-					URL := "http://pppc2.25pp.com/pp_api/ios.php"
-					if JBType = 1
-						data := "site=1&id=" . AppID
-					if JBType = 2
-						data := "site=3&id=" . AppITID
-					PPJson := UrlPost(URL,data)
-					if JBType = 1
-						LVWrite(RowNumber,AppID,JBType,himl,PPJson,1)
-					if JBType = 2
-						LVWrite(RowNumber,AppITID,JBType,himl,PPJson,1)
-					break
-				}
-			}
+			LVWrite(RowNumber, SearchAppID, JBType, himl, PP)
+			Transfer(RowNumber, SearchAppID, JBType)
 		}
 	}
-	if JBType = 1
-		GuiControl, , 查询越狱, 1
-	if JBType = 2
-		GuiControl, , 查询正版, 1
 	LV_ModifyCol()
 	LV_ModifyCol(4,80)
 	LV_ModifyCol(5,80)
 	LV_ModifyCol(8,70)
 	LV_ModifyCol(13,0)
 	StayRun := 0
-	GuiControl, Enable, 转换
+	GuiControl, Enable, 搜索
+return
+
+Save:
+	CSV_LVSave("LVContent.csv", ";", 1, 1)
 return
 
 Copy:
@@ -934,10 +525,15 @@ return
 
 
 GuiClose:
-	CSV_LVSave("LVContent.csv", ";", 1, 1)
 	Gui, Destroy
 	ObjRelease(pipa)
 	ExitApp
+
+ContextTest:
+	doc := wb.doc
+	MyCookie := doc.cookie
+	
+return
 
 GetDetail:
 	KeyWord := 刀塔
@@ -972,6 +568,19 @@ GetDetail:
 	;MsgBox % picurl
 return
 
+DisableSetRedraw() {
+    return 0
+}
+
+UrlPost(URL, data) {
+	WebRequest := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+	WebRequest.Open("POST", URL, true)
+	WebRequest.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded")
+	WebRequest.Send(data)
+	WebRequest.WaitForResponse(-1)
+	return WebRequest.ResponseText
+}
+
 PPsearch(KeyWord, JBType, SCount:=10) {
 	URL := "http://jsondata.25pp.com/index.html"
 	if JBType = 1
@@ -994,72 +603,138 @@ PPsearch(KeyWord, JBType, SCount:=10) {
 	return  WebRequest.ResponseText
 }
 
-
-DisableSetRedraw() {
-    return 0
-}
-
-UrlPost(URL, data) {
-	WebRequest := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-	WebRequest.Open("POST", URL, true)
-	WebRequest.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded")
-	WebRequest.Send(data)
-	WebRequest.WaitForResponse(-1)
-	return WebRequest.ResponseText
-}
-
-JavaEscapedToUnicode(s) {
-    i := 1
-    while j := RegExMatch(s, "\\u[A-Fa-f0-9]{1,4}", m, i)
-        e .= SubStr(s, i, j-i) Chr("0x" SubStr(m, 3)), i := j + StrLen(m)
-    return e . SubStr(s, i)
-}
-
-LVWrite(RowNumber,AppID,JBType,himl,PPJson,Mode:=0) {
-	ppName := json(PPJson,"name")
-	AppName := JavaEscapedToUnicode(ppName)
-	ppeditor := json(PPJson,"editorRemark")
-	editor := JavaEscapedToUnicode(ppeditor)
-	catid := json(PPJson,"catId")
-	AppBundle := json(PPJson,"buid")
-	AppType := json(PPJson,"appType")
+LVWrite(RowNumber,AppID,JBType,himl,Json,Mode:=0) {
+	AppName := Json.name
+	Editor := Json.editorRemark
+	CatID := Json.catId
+	AppBundle := Json.buid
+	AppType := Json.appType
 	StringReplace, AppType, AppType, soft, 软件, All
 	StringReplace, AppType, AppType, game, 游戏, All
-	AppSize := json(PPJson,"fileSize")
-	ppcontent := json(PPJson,"content")
-	content := JavaEscapedToUnicode(ppcontent)
-	StringReplace , content, content, `\/,/,All
-	contenturl := A_ScriptDir . "`\Temp`\" . AppID . ".html"
-	IfExist, %contenturl%
-		FileDelete, %contenturl%
-	FileAppend, %content%, %contenturl%
-	iconURL := json(PPJson,"iconUrl")
-	StringReplace , iconURL, iconURL, `\/,/,All
+	AppSize := Json.fileSize
+	Content := Json.content
+	;~ Content := JavaEscapedToUnicode(ppcontent)
+	;~ StringReplace , Content, Content, `\/,/,All
+	ContentDIR := A_ScriptDir . "`\Temp`\" . AppID . ".html"
+	IfExist, %ContentDIR%
+		FileDelete, %ContentDIR%
+	FileAppend, %Content%, %ContentDIR%
+	iconURL := Json.iconUrl
+	;MsgBox % iconURL
 	StringGetPos, Pos1, iconURL, `., R
 	Pos2 := Pos1 + 1
 	Ext := SubStr(iconURL, Pos2)
-	picurl := A_ScriptDir . "`\Temp`\" . AppID . Ext
-	IfNotExist ,%picurl%
-		URLDownloadToFile , %iconURL%, %picurl%
-	;MsgBox % picurl "`n" RowNumber "`n" AppID "`n" AppName "`n" AppType "`n" AppBundle "`n" AppSize "`n" editor "`n" catid
+	iconDIR := A_ScriptDir . "`\Temp`\" . AppID . Ext
+	IfNotExist ,%iconDIR%
+		URLDownloadToFile , %iconURL%, %iconDIR%
+	;MsgBox % iconURL "`n" iconDIR "`n" RowNumber "`n" AppID "`n" AppName "`n" AppType "`n" AppBundle "`n" AppSize "`n" editor "`n" catid
 	if Mode = 0
 	{
-		IL_Add(himl,picurl,0,1)
+		IL_Add(himl,iconDIR,0,1)
 		if JBType = 1
-			LV_Add( "icon" . RowNumber ,,AppID,, AppName,, AppType,, AppBundle, AppSize,, editor)	
+			LV_Add( "icon" . RowNumber ,,AppID,, AppName,, AppType,, AppBundle, AppSize,, Editor)	
 		if JBType = 2
-			LV_Add( "icon" . RowNumber ,,,AppID,, AppName,, AppType, AppBundle,, AppSize,, editor,catid)
+			LV_Add( "icon" . RowNumber ,,,AppID,, AppName,, AppType, AppBundle,, AppSize,, Editor,CatID)
 	}
 	if Mode = 1
 	{
 		if JBType = 1
-			LV_Modify( RowNumber,,,, AppID,, AppName,, AppType, AppBundle,, AppSize,, editor, catid)	
+			LV_Modify( RowNumber,,,, AppID,, AppName,, AppType, AppBundle,, AppSize,, Editor, CatID)	
 		if JBType = 2
-			LV_Modify( RowNumber,,, AppID,, AppName,, AppType,, AppBundle, AppSize,, editor)
+			LV_Modify( RowNumber,,, AppID,, AppName,, AppType,, AppBundle, AppSize,, Editor)
 	}
 	return
 }
 
+Transfer(RowNumber, AppID, JBType, SearchTime:=0) {
+	if JBType = 1
+		LV_GetText(AppListName, RowNumber,4)
+	if JBType = 2
+		LV_GetText(AppListName, RowNumber,5)
+	LV_GetText(AppListBundle, RowNumber,8)
+	PosN := RegExMatch(AppListName, ".?[\s|-|\(|（|－]")
+	StringLeft, TPSearchWord, AppListName, PosN
+	if PosN = 0
+		TPSearchWord := AppListName
+	;MsgBox % AppListName "`n" PosN "`n" PPSearchWord
+	if JBType = 1
+		SearchWord := TPSearchWord
+	if JBType = 2
+		SearchWord := AppListName
+	searchjson := PPSearch(SearchWord,2)
+	Search := parseJson(searchjson)
+	;MsgBox % SearchWord "`n" JBType "`n" searchjson
+	Loop, 10
+	{
+		SearchAppName := Search.content[A_Index].title
+		if SearchAppName =
+			break
+		JBAppID := Search.content[A_Index].id
+		PPAppID := Search.content[A_Index].itemId
+		if JBType = 1
+			AppSID := PPAppID
+		if JBType = 2
+			AppSID := JBAppID
+		;MsgBox % "原始ID：" AppID "`n匹配ID：" AppSID
+		if AppID = %AppSID%
+		{
+			URL := "http://pppc2.25pp.com/pp_api/ios.php"
+			if JBType = 1
+				data := "site=1&id=" . JBAppID
+			if JBType = 2
+				data := "site=3&id=" . PPAppID
+			PPJson := UrlPost(URL,data)
+			;MsgBox % PPJson
+			PP := parseJson(PPJson)
+			AppName := PP.name
+			;MsgBox % AppName
+			if AppName =
+				break
+			if JBType = 1
+				LVWrite(RowNumber,JBAppID,JBType,himl,PP,1)
+			if JBType = 2
+				LVWrite(RowNumber,PPAppID,JBType,himl,PP,1)
+			SearchTime := 1
+			break
+		}
+	}
+	if SearchTime <> 1
+	{
+		if JBType = 1
+			SType := 2
+		if JBType = 2
+			SType := 1
+		searchjson := PPSearch(SearchWord,SType,20)
+		Search := parseJson(searchjson)
+		;MsgBox % searchjson
+		Loop, 20
+		{
+			SearchAppName := Search.content[A_Index].title
+			if SearchAppName =
+				break
+			SearchAppBundle := Search.content[A_Index].buid
+			;MsgBox % "原：" AppListBundle "`n新：" AppBundle
+			if AppListBundle = %SearchAppBundle%
+			{
+				JBAppID := Search.content[A_Index].id
+				PPAppID := Search.content[A_Index].itemId
+				URL := "http://pppc2.25pp.com/pp_api/ios.php"
+				if JBType = 1
+					data := "site=1&id=" . JBAppID
+				if JBType = 2
+					data := "site=3&id=" . PPAppID
+				PPJson := UrlPost(URL,data)
+				if JBType = 1
+					LVWrite(RowNumber,JBAppID,JBType,himl,PP,1)
+				if JBType = 2
+					LVWrite(RowNumber,PPAppID,JBType,himl,PP,1)
+				SearchTime := 2
+				break
+			}
+		}
+	}
+	return SearchTime
+}
 
 WM_KEYDOWN(wParam, lParam, nMsg, hWnd)
 {
